@@ -6,6 +6,8 @@
  * Written while drinking Belgian ales and listening to jazz
  *
  * Released under the MIT license - http://opensource.org/licenses/MIT
+ 
+ * Version Modifié
  */
 
 ;(function($){
@@ -53,16 +55,20 @@
 
 		// CONTROLS
 		controls: true,
-		nextText: 'Next',
-		prevText: 'Prev',
+		nextText: 'Image suivante',//Next',
+		prevText: 'Image précédent',//'Prev',
 		nextSelector: null,
 		prevSelector: null,
 		autoControls: false,
-		startText: 'Start',
-		stopText: 'Stop',
+		startText: 'Continuer le défilement',//'Start',
+		stopText: 'Suspendre le défilement',//'Stop',
 		autoControlsCombine: false,
 		autoControlsSelector: null,
 
+		//ACCESSIBILITY
+		prefixPagerButton: "Voir l'image agrandie de : ",
+		figCaptionHide: false,
+		
 		// AUTO
 		auto: false,
 		pause: 4000,
@@ -84,8 +90,19 @@
 		onSlideAfter: function() {},
 		onSlideNext: function() {},
 		onSlidePrev: function() {},
-		onSliderResize: function() {}
-	}
+		onSliderResize: function() {},
+		
+		//ADD
+		figCaption: '.figcaption',
+		
+		// External feed - e.g. Flickr / Facebook / Instagram		
+		feed: [{
+			origin: null,
+			apiKey: null,
+			photoSetID: null	
+		}]
+		
+}
 
 	$.fn.bxSlider = function(options){
 
@@ -122,12 +139,20 @@
 		 * Initializes namespace settings to be used throughout plugin
 		 */
 		var init = function(){
+			
+			
 			// merge user-supplied options with the defaults
 			slider.settings = $.extend({}, defaults, options);
+			
+			/*if ( slider.settings.feed[0].origin == 'flickr') {
+				loadElementsFlickr();
+			}*/
+			
 			// parse slideWidth setting
 			slider.settings.slideWidth = parseInt(slider.settings.slideWidth);
 			// store the original children
 			slider.children = el.children(slider.settings.slideSelector);
+			
 			// check if actual number of slides is less than minSlides / maxSlides
 			if(slider.children.length < slider.settings.minSlides) slider.settings.minSlides = slider.children.length;
 			if(slider.children.length < slider.settings.maxSlides) slider.settings.maxSlides = slider.children.length;
@@ -174,6 +199,7 @@
 			el.children(slider.settings.slideSelector).each(function() {
 			  $(this).data("origStyle", $(this).attr("style"));
 			});
+			
 			// perform all DOM / CSS modifications
 			setup();
 		}
@@ -191,6 +217,7 @@
 			slider.viewport.prepend(slider.loader);
 			// set el to a massive width, to hold any needed slides
 			// also strip any margin and padding from el
+			
 			el.css({
 				width: slider.settings.mode == 'horizontal' ? (slider.children.length * 100 + 215) + '%' : 'auto',
 				position: 'relative'
@@ -252,28 +279,88 @@
 			if (slider.settings.preloadImages == "all") preloadSelector = slider.children;
 			// only check for control addition if not in "ticker" mode
 			if(!slider.settings.ticker){
-				// if pager is requested, add it
-				if(slider.settings.pager) appendPager();
 				// if controls are requested, add them
 				if(slider.settings.controls) appendControls();
 				// if auto is true, and auto controls are requested, add them
 				if(slider.settings.auto && slider.settings.autoControls) appendControlsAuto();
+				// if pager is requested, add it
+				if(slider.settings.pager) appendPager();
+				
+				
 				// if any control option is requested, add the controls wrapper
 				if(slider.settings.controls || slider.settings.autoControls || slider.settings.pager) slider.viewport.after(slider.controls.el);
 			// if ticker mode, do not allow a pager
 			}else{
 				slider.settings.pager = false;
 			}
+			
+			// Identifie les liens et ajoute un tabindex -1 pour les désactivé dans les captions cachés
+			$(el).find('figcaption').find('a').attr("tabindex","-1");
+			
+			// Rend sensible le conteneur «figcaption» aux changements pour lecteur-ecran seulement si pas em mode auto (play/pause)
+			if(!slider.settings.auto && !slider.settings.autoControls)
+				$(slider.settings.figCaption).attr("aria-live","polite").attr("aria-atomic","true").attr("role","region");
+			
+			// Si le parametre figCaptionHide=true, cache le caption à l'écran
+			if(slider.settings.figCaptionHide)
+				$(slider.settings.figCaption).addClass('visuallyhidden');
+		
 			// preload all images, then perform final DOM / CSS modifications that depend on images being loaded
 			loadElements(preloadSelector, start);
 		}
 
+/* Load Flickr feed */
+/*
+*/
+var loadElementsFlickr = function() {
+	var url = 'http://api.flickr.com/services/rest/?jsoncallback=?';
+	$.getJSON(url, { // Load album infos
+		method: 'flickr.photosets.getInfo',
+		api_key: slider.settings.feed[0].apiKey,
+		photoset_id: slider.settings.feed[0].photoSetId,
+		format: 'json'
+	}).success(function(state) {
+		$.getJSON(url, { // Load Photos
+			method: 'flickr.photosets.getPhotos',
+			api_key: slider.settings.feed[0].apiKey,
+			media: 'photos',
+			photoset_id: slider.settings.feed[0].photoSetId,
+			format: 'json',
+			extras: 'url_sq,url_z,date_taken,tags'
+		}).success(function(state) {
+			//var list = $('.flickr').find('ul');
+			//list.html('');
+			list = $('.flickr');
+			
+			$.each(state.photoset.photo, function(){
+				//alert(this.url_sq);
+				list.append('<li><figure><img src="' + this.url_z + '" ' +
+					'data-title="' + this.title + '" ' +
+					'data-url="' + this.url_m + '" ' +
+					( this.date_taken ? 'data-date="' + this.date_taken + '" ' : '' ) +
+					'data-tags="' + this.tags + '" ' +
+					'/></figure></li>');
+			});
+			//loadElements(preloadSelector, start);
+			
+		}).fail(function(state) { 
+			alert("Unable to retrieve photo set"); 
+		});
+		   //alert(state.toSource());
+	}).fail(function(state) { 
+		alert("Unable to retrieve photo set information"); 
+	});
+	
+}
+
 		var loadElements = function(selector, callback){
 			var total = selector.find('img, iframe').length;
+
 			if (total == 0){
 				callback();
 				return;
 			}
+			
 			var count = 0;
 			selector.find('img, iframe').each(function(){
 				$(this).one('load', function() {
@@ -288,6 +375,7 @@
 		 * Start the slider
 		 */
 		var start = function(){
+			
 			// if infinite loop, prepare additional slides
 			if(slider.settings.infiniteLoop && slider.settings.mode != 'fade' && !slider.settings.ticker){
 				var slice = slider.settings.mode == 'vertical' ? slider.settings.minSlides : slider.settings.maxSlides;
@@ -321,6 +409,10 @@
 			if (slider.settings.controls) updateDirectionControls();
 			// if touchEnabled is true, setup the touch events
 			if (slider.settings.touchEnabled && !slider.settings.ticker) initTouch();
+						
+			// Change the figcaption content
+			updateFigCaption(slider.children.eq(slider.settings.startSlide))
+
 		}
 
 		/**
@@ -354,6 +446,7 @@
 					}
 				}
 			}
+			
 			// if "vertical" mode, calculate the sum of the heights of the children
 			if(slider.settings.mode == 'vertical'){
 				children.each(function(index) {
@@ -368,6 +461,8 @@
 				height = Math.max.apply(Math, children.map(function(){
 					return $(this).outerHeight(false);
 				}).get());
+			/*	height = slider.children.eq(0).outerHeight(false);*/
+				//consoleLog("Height : " + height	);
 			}
 
 			if(slider.viewport.css('box-sizing') == 'border-box'){
@@ -468,6 +563,7 @@
 			}else{
 				pagerQty = Math.ceil(slider.children.length / getNumberSlidesShowing());
 			}
+			
 			return pagerQty;
 		}
 
@@ -588,6 +684,7 @@
 		 * Populates the pager with proper amount of pages
 		 */
 		var populatePager = function(){
+			//consoleLog($(slider.children[0]).find('figcaption').data("caption"));
 			var pagerHtml = '';
 			var pagerQty = getPagerQty();
 			// loop through each pager item
@@ -598,15 +695,15 @@
 					linkContent = slider.settings.buildPager(i);
 					slider.pagerEl.addClass('bx-custom-pager');
 				}else{
-					linkContent = i + 1;
+					linkContent = slider.settings.prefixPagerButton + $(slider.children[i]).find('figcaption').data("caption");
 					slider.pagerEl.addClass('bx-default-pager');
 				}
 				// var linkContent = slider.settings.buildPager && $.isFunction(slider.settings.buildPager) ? slider.settings.buildPager(i) : i + 1;
 				// add the markup to the string
-				pagerHtml += '<div class="bx-pager-item"><a href="" data-slide-index="' + i + '" class="bx-pager-link">' + linkContent + '</a></div>';
+				pagerHtml += '<li class="bx-pager-item"><button data-slide-index="' + i + '" class="bx-pager-link"><span class="visuallyhidden">' + linkContent + '</span></button></li>';
 			};
 			// populate the pager element with pager links
-			slider.pagerEl.html(pagerHtml);
+			slider.pagerEl.html('<ul>'+pagerHtml+'</ul>');
 		}
 
 		/**
@@ -625,19 +722,38 @@
 				}
 				// populate the pager
 				populatePager();
+				
+				// assign the pager click binding
+				slider.pagerEl.on('click', 'button', clickPagerBind);
+			
 			}else{
+				//consoleLog(slider.settings.prefixPagerButton + $(slider.children[0]).find('figcaption').data("caption"));
 				slider.pagerEl = $(slider.settings.pagerCustom);
+				// assign the pager click binding
+				slider.pagerEl.on('click', 'a', clickPagerBind);
+				
+				// Add alt to image nav (or on a ??)
+				$(slider.pagerEl).find('img').each(function(index, element) {
+					$(this).attr("alt",slider.settings.prefixPagerButton + $(slider.children[index]).find('figcaption').data("caption"));					
+				});
 			}
-			// assign the pager click binding
-			slider.pagerEl.on('click', 'a', clickPagerBind);
+			
+			
 		}
+
+
+
+
 
 		/**
 		 * Appends prev / next controls to the controls element
 		 */
 		var appendControls = function(){
-			slider.controls.next = $('<a class="bx-next" href="">' + slider.settings.nextText + '</a>');
-			slider.controls.prev = $('<a class="bx-prev" href="">' + slider.settings.prevText + '</a>');
+			hide_screen_reader = (slider.settings.pagerType == 'carousel') ? 'aria-hidden="true" tabindex="-1"' : '';
+			
+			slider.controls.next = $('<button class="bx-next" type="button"><span class="visuallyhidden" '+hide_screen_reader+'>' + slider.settings.nextText + '</span></button>');
+			slider.controls.prev = $('<button class="bx-prev" type="button"><span class="visuallyhidden" '+hide_screen_reader+'>' + slider.settings.prevText + '</span></button>');
+			
 			// bind click actions to the controls
 			slider.controls.next.bind('click', clickNextBind);
 			slider.controls.prev.bind('click', clickPrevBind);
@@ -664,13 +780,14 @@
 		 * Appends start / stop auto controls to the controls element
 		 */
 		var appendControlsAuto = function(){
-			slider.controls.start = $('<div class="bx-controls-auto-item"><a class="bx-start" href="">' + slider.settings.startText + '</a></div>');
-			slider.controls.stop = $('<div class="bx-controls-auto-item"><a class="bx-stop" href="">' + slider.settings.stopText + '</a></div>');
+			slider.controls.start = $('<div class="bx-controls-auto-item"><button class="bx-start"><span class="visuallyhidden">' + slider.settings.startText + '</span></button></div>');
+			slider.controls.stop = $('<div class="bx-controls-auto-item"><button class="bx-stop"><span class="visuallyhidden">' + slider.settings.stopText + '</span></button></div>');
 			// add the controls to the DOM
-			slider.controls.autoEl = $('<div class="bx-controls-auto" />');
+			slider.controls.autoEl = $('<div class="bx-controls-auto" aria-live="polite" />');
 			// bind click actions to the controls
 			slider.controls.autoEl.on('click', '.bx-start', clickStartBind);
 			slider.controls.autoEl.on('click', '.bx-stop', clickStopBind);
+			
 			// if autoControlsCombine, insert only the "start" control
 			if(slider.settings.autoControlsCombine){
 				slider.controls.autoEl.append(slider.controls.start);
@@ -678,6 +795,7 @@
 			}else{
 				slider.controls.autoEl.append(slider.controls.start).append(slider.controls.stop);
 			}
+			
 			// if auto controls selector was supplied, populate it with the controls
 			if(slider.settings.autoControlsSelector){
 				$(slider.settings.autoControlsSelector).html(slider.controls.autoEl);
@@ -685,6 +803,7 @@
 			}else{
 				slider.controls.el.addClass('bx-has-controls-auto').append(slider.controls.autoEl);
 			}
+			
 			// update the auto controls
 			updateAutoControls(slider.settings.autoStart ? 'stop' : 'start');
 		}
@@ -738,6 +857,7 @@
 		 */
 		var clickStartBind = function(e){
 			el.startAuto();
+			$('.bx-stop').focus();
 			e.preventDefault();
 		}
 
@@ -749,6 +869,8 @@
 		 */
 		var clickStopBind = function(e){
 			el.stopAuto();
+			$('.bx-start').focus();
+			updateFigCaption(slider.children.eq(slider.active.index));
 			e.preventDefault();
 		}
 
@@ -768,15 +890,45 @@
 				if(pagerIndex != slider.active.index) el.goToSlide(pagerIndex);
 				e.preventDefault();
 			}
+			
 		}
 
+		/**
+		* DOM Pager modification
+		*
+		* @param e (event)
+		* - DOM event object
+		*/
+		el.updatePagerCarousel = function(slideIndex, type) {
+			slide_active = slideIndex;
+				
+			// Modify value only if carousel
+			if(typeof(carousel) != "undefined") {
+				if(type == 'carousel') {
+					slide_showing = getNumberSlidesShowing();
+					slider_active = parseInt(slider.active.index) + 1;
+				}
+				
+				// Call public fonction
+				slider_active = carousel.getCurrentSlide()+1;
+		
+				go_slide = carousel.getSlideCount() / carousel.getPagerQtyCarousel();
+		
+				
+				carousel.goToSlide( Math.floor(slide_active/go_slide) );
+				
+			}
+			
+		}
+		
+		
 		/**
 		 * Updates the pager links with an active class
 		 *
 		 * @param slideIndex (int)
 		 *  - index of slide to make active
 		 */
-		var updatePagerActive = function(slideIndex){
+		var updatePagerActive = function(slideIndex, elem){
 			// if "short" pager type
 			var len = slider.children.length; // nb of children
 			if(slider.settings.pagerType == 'short'){
@@ -786,10 +938,20 @@
 				slider.pagerEl.html( (slideIndex + 1) + slider.settings.pagerShortSeparator + len);
 				return;
 			}
+
 			// remove all pager active classes
 			slider.pagerEl.find('a').removeClass('active');
+			//or
+			slider.pagerEl.find('button').removeClass('active');
+			
 			// apply the active class for all pagers
 			slider.pagerEl.each(function(i, el) { $(el).find('a').eq(slideIndex).addClass('active'); });
+			//or
+			slider.pagerEl.each(function(i, el) { $(el).find('button').eq(slideIndex).addClass('active'); });
+			
+			// Pour le pager carousel, vérifie si l'élément actif est dans le viewport
+			if(typeof(elem) != "undefined")
+				elem.updatePagerCarousel(slideIndex);
 		}
 
 		/**
@@ -819,9 +981,54 @@
 			slider.working = false;
 			// onSlideAfter callback
 			slider.settings.onSlideAfter(slider.children.eq(slider.active.index), slider.oldIndex, slider.active.index);
+			
+			// Change the figcaption content if not slide nav	
+			updateFigCaption(slider.children.eq(slider.active.index))
 		}
 
-		/**
+
+
+/**
+*	Update figcaption
+*/
+var updateFigCaption = function(itm) {
+	slider.figcaption = $(slider.settings.figCaption);
+	
+	// Réactive tout les figcaption pour la lecture par le lecteur écran
+	$(el).find('figcaption').attr('aria-hidden','false');
+	
+	// Si item .bx-clone, empêche la lecture du figcaption
+	$(el).find('.bx-clone').find('figcaption').attr('aria-hidden','true');
+	
+	if ( $(itm).find('figcaption').length ) {
+				
+		// Réactive le tab index avant la capture
+		$(itm).find('figcaption').find('a').attr("tabindex","0");
+		
+		// Désactive la lecture du figcaption actif à l'écran pour éviter la double-lecture
+		///$(itm).find('figcaption').attr('aria-hidden','true');
+		
+		content = $(itm).find('figcaption').html();
+		content = (content != undefined && ('' + content).length) ? content : '';
+		slider.figcaption.html(content);
+		//consoleLog(content);
+		
+		// Si le lecteur est en pause ou en mode manuel, permet la lecture par le lecteur écran
+		if( $('.bx-start').length ) {
+			$(slider.settings.figCaption).attr("aria-live","polite").attr("aria-atomic","true").attr("role","region");
+			consoleLog(content);
+			slider.figcaption.html(content);
+		} else if( $('.bx-stop').length ) {
+			$(slider.settings.figCaption).removeAttr('aria-live').removeAttr('aria-atomic').removeAttr('role');
+		}
+		
+		// Identifie les liens et ajoute un tabindex -1 pour les désactivé dans les captions cachés
+		$(itm).find('figcaption').find('a').attr("tabindex","-1");
+	}
+}
+
+
+/**
 		 * Updates the auto controls state (either active, or combined switch)
 		 *
 		 * @param state (string) "start", "stop"
@@ -831,6 +1038,7 @@
 			// if autoControlsCombine is true, replace the current control with the new state
 			if(slider.settings.autoControlsCombine){
 				slider.controls.autoEl.html(slider.controls[state]);
+				
 			// if autoControlsCombine is false, apply the "active" class to the appropriate control
 			}else{
 				slider.controls.autoEl.find('a').removeClass('active');
@@ -843,21 +1051,35 @@
 		 */
 		var updateDirectionControls = function(){
 			if(getPagerQty() == 1){
-				slider.controls.prev.addClass('disabled');
-				slider.controls.next.addClass('disabled');
-			}else if(!slider.settings.infiniteLoop && slider.settings.hideControlOnEnd){
+				slider.controls.prev.addClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+				slider.controls.next.addClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+			}else if( !slider.settings.infiniteLoop && slider.settings.hideControlOnEnd ){
 				// if first slide
-				if (slider.active.index == 0){
-					slider.controls.prev.addClass('disabled');
-					slider.controls.next.removeClass('disabled');
+				if ( slider.active.index == 0 ){
+					slider.controls.prev.addClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+					if( slider.settings.pagerType == 'carousel' )
+						slider.controls.next.removeClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+					else 
+						slider.controls.next.removeClass('disabled').attr("aria-hidden","false").attr("tabindex","0");
+
 				// if last slide
-				}else if(slider.active.index == getPagerQty() - 1){
-					slider.controls.next.addClass('disabled');
-					slider.controls.prev.removeClass('disabled');
+				} else if ( slider.active.index == getPagerQty() - 1 ){
+					slider.controls.next.addClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+					if( slider.settings.pagerType == 'carousel' )
+						slider.controls.prev.removeClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+					else
+						slider.controls.prev.removeClass('disabled').attr("aria-hidden","false").attr("tabindex","0");
+
+						
 				// if any slide in the middle
-				}else{
-					slider.controls.prev.removeClass('disabled');
-					slider.controls.next.removeClass('disabled');
+				} else {
+					if( slider.settings.pagerType == 'carousel' ) {
+						slider.controls.prev.removeClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");
+						slider.controls.next.removeClass('disabled').attr("aria-hidden","true").attr("tabindex","-1");	
+					} else {
+						slider.controls.prev.removeClass('disabled').attr("aria-hidden","false").attr("tabindex","0");
+						slider.controls.next.removeClass('disabled').attr("aria-hidden","false").attr("tabindex","0");			
+					}
 				}
 			}
 		}
@@ -1140,7 +1362,7 @@
 			// check if last slide
 			slider.active.last = slider.active.index >= getPagerQty() - 1;
 			// update the pager with active class
-			if(slider.settings.pager) updatePagerActive(slider.active.index);
+			if(slider.settings.pager) updatePagerActive(slider.active.index, this);
 			// // check for direction control update
 			if(slider.settings.controls) updateDirectionControls();
 			// if slider is set to mode: "fade"
@@ -1295,11 +1517,16 @@
 			if (slider.active.last) slider.active.index = getPagerQty() - 1;
 			// if the active index (page) no longer exists due to the resize, simply set the index as last
 			if (slider.active.index >= getPagerQty()) slider.active.last = true;
+			
 			// if a pager is being displayed and a custom pager is not being used, update it
 			if(slider.settings.pager && !slider.settings.pagerCustom){
 				populatePager();
 				updatePagerActive(slider.active.index);
 			}
+			
+		//	if(slider.settings.pagerType == 'carousel');	
+		
+			el.updatePagerCarousel(slider.active.index, slider.settings.pagerType);
 		}
 
 		/**
@@ -1333,6 +1560,25 @@
 			el.destroySlider();
 			init();
 		}
+
+/**
+ * Returns number of slides in show for carousel
+ */
+el.getPagerQtyCarousel = function() {
+	return getPagerQty();
+}
+
+function langueLabel(label_array) {
+	lang = $("html").attr("lang");
+	label = (lang == "fr") ? label_array[0] : label_array[1];
+	return label;
+}
+
+function consoleLog (data) {
+	if(window.console && consoleLog )
+	console.log(data);
+}
+
 
 		init();
 
